@@ -6,6 +6,9 @@ import (
 
 	"github.com/coredns/coredns/plugin"
 	"github.com/coredns/coredns/plugin/dnstap/msg"
+	"github.com/coredns/coredns/plugin/pkg/replacer"
+	"github.com/coredns/coredns/plugin/pkg/dnstest"
+	"github.com/coredns/coredns/request"
 
 	tap "github.com/dnstap/golang-dnstap"
 	"github.com/miekg/dns"
@@ -15,23 +18,28 @@ import (
 type Dnstap struct {
 	Next plugin.Handler
 	io   tapper
+	repl replacer.Replacer
+	ctx  context.Context
+	state request.Request
+	rrw  *dnstest.Recorder
 
 	// IncludeRawMessage will include the raw DNS message into the dnstap messages if true.
 	IncludeRawMessage bool
 	Identity          []byte
 	Version           []byte
-	Extra             []byte
+	ExtraFormat       string
 }
 
 // TapMessage sends the message m to the dnstap interface.
 func (h Dnstap) TapMessage(m *tap.Message) {
 	t := tap.Dnstap_MESSAGE
+	extraMsg := h.repl.Replace(h.ctx, h.state, h.rrw, h.ExtraFormat)
 	dt := &tap.Dnstap{
 		Type: &t,
 		Message: m,
 		Identity: h.Identity,
 		Version: h.Version,
-		Extra: h.Extra,
+		Extra: []byte(extraMsg),
 	}
 	h.io.Dnstap(dt)
 }
@@ -57,6 +65,9 @@ func (h Dnstap) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) 
 		query:          r,
 		queryTime:      time.Now(),
 	}
+	h.state = request.Request{W: w, Req: r}
+	h.ctx = ctx
+	h.rrw = dnstest.NewRecorder(w)
 
 	// The query tap message should be sent before sending the query to the
 	// forwarder. Otherwise, the tap messages will come out out of order.
