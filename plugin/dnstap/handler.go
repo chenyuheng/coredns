@@ -6,6 +6,10 @@ import (
 
 	"github.com/coredns/coredns/plugin"
 	"github.com/coredns/coredns/plugin/dnstap/msg"
+	"github.com/coredns/coredns/plugin/pkg/replacer"
+	"github.com/coredns/coredns/request"
+
+	"fmt"
 
 	tap "github.com/dnstap/golang-dnstap"
 	"github.com/miekg/dns"
@@ -15,28 +19,32 @@ import (
 type Dnstap struct {
 	Next plugin.Handler
 	io   tapper
+	repl replacer.Replacer
+	ctx  context.Context
 
 	// IncludeRawMessage will include the raw DNS message into the dnstap messages if true.
 	IncludeRawMessage bool
 	Identity          []byte
 	Version           []byte
-	Extra             []byte
+	ExtraFormat       string
 }
 
 // TapMessage sends the message m to the dnstap interface.
 func (h Dnstap) TapMessage(m *tap.Message) {
 	t := tap.Dnstap_MESSAGE
+	//extraMsg := h.repl.Replace(ctx, state, r, h.ExtraFormat)
+	//fmt.Println(extraMsg)
 	dt := &tap.Dnstap{
 		Type: &t,
 		Message: m,
 		Identity: h.Identity,
 		Version: h.Version,
-		Extra: h.Extra,
+		Extra: []byte(h.ExtraFormat),
 	}
 	h.io.Dnstap(dt)
 }
 
-func (h Dnstap) tapQuery(w dns.ResponseWriter, query *dns.Msg, queryTime time.Time) {
+func (h Dnstap) tapQuery(w dns.ResponseWriter, query *dns.Msg, queryTime time.Time, state request.Request) {
 	q := new(tap.Message)
 	msg.SetQueryTime(q, queryTime)
 	msg.SetQueryAddress(q, w.RemoteAddr())
@@ -51,6 +59,7 @@ func (h Dnstap) tapQuery(w dns.ResponseWriter, query *dns.Msg, queryTime time.Ti
 
 // ServeDNS logs the client query and response to dnstap and passes the dnstap Context.
 func (h Dnstap) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (int, error) {
+	fmt.Println("dnstap ServeDNS")
 	rw := &ResponseWriter{
 		ResponseWriter: w,
 		Dnstap:         h,
@@ -58,10 +67,14 @@ func (h Dnstap) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) 
 		queryTime:      time.Now(),
 	}
 
+	state := request.Request{W: rw, Req: r}
+	h.ctx = ctx
+
 	// The query tap message should be sent before sending the query to the
 	// forwarder. Otherwise, the tap messages will come out out of order.
-	h.tapQuery(w, r, rw.queryTime)
+	h.tapQuery(w, r, rw.queryTime, state)
 
+	fmt.Println("dnstap ServeDNS ServeDNS end")
 	return plugin.NextOrFailure(h.Name(), h.Next, ctx, rw, r)
 }
 

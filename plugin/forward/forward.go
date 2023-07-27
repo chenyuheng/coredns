@@ -22,6 +22,8 @@ import (
 	"github.com/miekg/dns"
 	ot "github.com/opentracing/opentracing-go"
 	otext "github.com/opentracing/opentracing-go/ext"
+
+	"fmt"
 )
 
 var log = clog.NewWithPlugin("forward")
@@ -74,6 +76,7 @@ func (f *Forward) SetProxy(p *proxy.Proxy) {
 
 // SetTapPlugin appends one or more dnstap plugins to the tap plugin list.
 func (f *Forward) SetTapPlugin(tapPlugin *dnstap.Dnstap) {
+	fmt.Println("forward SetTapPlugin")
 	f.tapPlugins = append(f.tapPlugins, tapPlugin)
 	if nextPlugin, ok := tapPlugin.Next.(*dnstap.Dnstap); ok {
 		f.SetTapPlugin(nextPlugin)
@@ -88,6 +91,7 @@ func (f *Forward) Name() string { return "forward" }
 
 // ServeDNS implements plugin.Handler.
 func (f *Forward) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (int, error) {
+	fmt.Println("forward ServeDNS")
 	state := request.Request{W: w, Req: r}
 	if !f.match(state) {
 		return plugin.NextOrFailure(f.Name(), f.Next, ctx, w, r)
@@ -101,6 +105,7 @@ func (f *Forward) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 			return dns.RcodeRefused, f.ErrLimitExceeded
 		}
 	}
+	fmt.Println("forward ServeDNS 1")
 
 	fails := 0
 	var span, child ot.Span
@@ -110,7 +115,9 @@ func (f *Forward) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 	list := f.List()
 	deadline := time.Now().Add(defaultTimeout)
 	start := time.Now()
+	fmt.Println("forward ServeDNS 2")
 	for time.Now().Before(deadline) {
+		fmt.Println("forward ServeDNS 2.1")
 		if i >= len(list) {
 			// reached the end of list, reset to begin
 			i = 0
@@ -131,7 +138,7 @@ func (f *Forward) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 
 			healthcheckBrokenCount.Add(1)
 		}
-
+		fmt.Println("forward ServeDNS 2.2")
 		if span != nil {
 			child = span.Tracer().StartSpan("connect", ot.ChildOf(span.Context()))
 			otext.PeerAddress.Set(child, proxy.Addr())
@@ -147,8 +154,9 @@ func (f *Forward) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 			err error
 		)
 		opts := f.opts
-
+		fmt.Println("forward ServeDNS 2.3")
 		for {
+			fmt.Println("forward ServeDNS 2.3.1")
 			ret, err = proxy.Connect(ctx, state, opts)
 
 			if err == ErrCachedClosed { // Remote side closed conn, can only happen with TCP.
@@ -165,11 +173,13 @@ func (f *Forward) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 		if child != nil {
 			child.Finish()
 		}
+		fmt.Println("forward ServeDNS 2.3.5")
 
 		if len(f.tapPlugins) != 0 {
+			fmt.Println("forward ServeDNS 2.3.6")
 			toDnstap(f, proxy.Addr(), state, opts, ret, start)
 		}
-
+		fmt.Println("forward ServeDNS 2.4")
 		upstreamErr = err
 
 		if err != nil {
@@ -183,7 +193,7 @@ func (f *Forward) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 			}
 			break
 		}
-
+		fmt.Println("forward ServeDNS 2.5")
 		// Check if the reply is correct; if not return FormErr.
 		if !state.Match(ret) {
 			debug.Hexdumpf(ret, "Wrong reply for id: %d, %s %d", ret.Id, state.QName(), state.QType())
@@ -195,12 +205,15 @@ func (f *Forward) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 		}
 
 		w.WriteMsg(ret)
+		fmt.Println("forward ServeDNS 2.6")
 		return 0, nil
 	}
+	fmt.Println("forward ServeDNS 3")
 
 	if upstreamErr != nil {
 		return dns.RcodeServerFailure, upstreamErr
 	}
+	fmt.Println("forward ServeDNS end")
 
 	return dns.RcodeServerFailure, ErrNoHealthy
 }

@@ -53,6 +53,7 @@ func setup(c *caddy.Controller) error {
 			return f.OnStartup()
 		})
 		c.OnStartup(func() error {
+			fmt.Println("forward setup c.OnStartup")
 			if taph := dnsserver.GetConfig(c).Handler("dnstap"); taph != nil {
 				f.SetTapPlugin(taph.(*dnstap.Dnstap))
 			}

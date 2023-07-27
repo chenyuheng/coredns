@@ -11,10 +11,13 @@ import (
 
 	tap "github.com/dnstap/golang-dnstap"
 	"github.com/miekg/dns"
+
+	"fmt"
 )
 
 // toDnstap will send the forward and received message to the dnstap plugin.
 func toDnstap(f *Forward, host string, state request.Request, opts proxy.Options, reply *dns.Msg, start time.Time) {
+	fmt.Println("forward toDnstap 1")
 	h, p, _ := net.SplitHostPort(host)      // this is preparsed and can't err here
 	port, _ := strconv.ParseUint(p, 10, 32) // same here
 	ip := net.ParseIP(h)
@@ -27,26 +30,33 @@ func toDnstap(f *Forward, host string, state request.Request, opts proxy.Options
 	case opts.PreferUDP:
 		t = "udp"
 	}
+	fmt.Println("forward toDnstap 2")
 
 	if t == "tcp" {
 		ta = &net.TCPAddr{IP: ip, Port: int(port)}
 	}
 
 	for _, t := range f.tapPlugins {
+		fmt.Println("forward toDnstap 2.1")
 		// Query
 		q := new(tap.Message)
 		msg.SetQueryTime(q, start)
+		fmt.Println("forward toDnstap 2.2")
 		// Forwarder dnstap messages are from the perspective of the downstream server
 		// (upstream is the forward server)
 		msg.SetQueryAddress(q, state.W.RemoteAddr())
 		msg.SetResponseAddress(q, ta)
+		fmt.Println("forward toDnstap 2.3")
 		if t.IncludeRawMessage {
+			fmt.Println("forward toDnstap 2.4")
 			buf, _ := state.Req.Pack()
 			q.QueryMessage = buf
 		}
+		fmt.Println("forward toDnstap 2.5")
 		msg.SetType(q, tap.Message_FORWARDER_QUERY)
+		fmt.Println("forward toDnstap 2.5.1")
 		t.TapMessage(q)
-
+		fmt.Println("forward toDnstap 2.6")
 		// Response
 		if reply != nil {
 			r := new(tap.Message)
@@ -62,4 +72,5 @@ func toDnstap(f *Forward, host string, state request.Request, opts proxy.Options
 			t.TapMessage(r)
 		}
 	}
+	fmt.Println("forward toDnstap 3")
 }

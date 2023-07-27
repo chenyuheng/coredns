@@ -11,6 +11,8 @@ import (
 	"github.com/coredns/coredns/plugin/pkg/dnstest"
 	"github.com/coredns/coredns/request"
 
+	"fmt"
+
 	"github.com/miekg/dns"
 )
 
@@ -256,6 +258,9 @@ var bufPool = sync.Pool{
 
 func (r replacer) Replace(ctx context.Context, state request.Request, rr *dnstest.Recorder) string {
 	b := bufPool.Get().([]byte)
+	fmt.Println("ctx is nil: ", ctx == nil)
+	fmt.Println("state: ", state)
+	fmt.Println("rr is nil: ", rr == nil)
 	for _, s := range r {
 		switch s.typ {
 		case typeLabel:
@@ -273,5 +278,6 @@ func (r replacer) Replace(ctx context.Context, state request.Request, rr *dnstes
 	s := string(b)
 	//nolint:staticcheck
 	bufPool.Put(b[:0])
+	fmt.Println("s: ", s)
 	return s
 }
